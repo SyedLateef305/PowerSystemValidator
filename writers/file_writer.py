@@ -1,28 +1,18 @@
-import os
+from config import OUTPUT_FOLDER
 
 
 class FileWriter:
-
     def __init__(self, lines):
-
         self.lines = lines
 
     def write(self, filename):
+        OUTPUT_FOLDER.mkdir(exist_ok=True)
 
-        os.makedirs("output", exist_ok=True)
+        path = OUTPUT_FOLDER / filename
 
-        path = os.path.join("output", filename)
-
-        with open(path, "w") as file:
-
+        with open(path, "w") as f:
             for line in self.lines:
+                f.write(line.rstrip() + "\n")
 
-                file.write(line.rstrip() + "\n")
-
-        print()
-
-        print("=" * 70)
-        print("OUTPUT FILE SAVED")
-        print("=" * 70)
-
-        print(path)
+        print(f"\nOutput file saved to: {path}")
+        return path

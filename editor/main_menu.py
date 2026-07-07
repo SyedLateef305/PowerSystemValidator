@@ -1,13 +1,9 @@
 class MainMenu:
-
     @staticmethod
     def display():
-
-        print()
-        print("=" * 70)
+        print("\n" + "=" * 70)
         print("POWER SYSTEM EDIT MENU")
         print("=" * 70)
-
         print("1. Edit Bus Data")
         print("2. Edit Transmission Line")
         print("3. Edit Generator")
@@ -19,6 +15,8 @@ class MainMenu:
         print("9. Save Corrected File")
         print("0. Exit")
 
-        print()
-
-        return input("Enter Choice : ")
+        while True:
+            try:
+                return int(input("\nEnter Choice : ").strip())
+            except ValueError:
+                print("Please enter a valid number.")

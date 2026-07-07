@@ -1,61 +1,75 @@
 class BusEditor:
-
     def __init__(self, buses, tracker):
-
         self.buses = buses
-
         self.tracker = tracker
 
-    def edit_voltage(self, bus_id):
-
+    def _find_bus(self, bus_id):
         for bus in self.buses:
-
             if bus.bus_id == bus_id:
+                return bus
+        raise ValueError(f"Bus {bus_id} not found.")
 
-                print()
+    def _edit_float(self, bus_id, attr, label, allow_zero=True):
+        bus = self._find_bus(bus_id)
 
-                print(f"Current Voltage : {bus.voltage}")
+        print(f"\nCurrent {label} : {getattr(bus, attr)}")
 
-                while True:
+        while True:
+            try:
+                value = float(input(f"Enter New {label} : "))
 
-                    try:
+                if (allow_zero and value < 0) or (not allow_zero and value <= 0):
+                    print(f"{label} is out of range.")
+                    continue
 
-                        value = float(
+                old = getattr(bus, attr)
+                setattr(bus, attr, value)
 
-                            input("Enter New Voltage : ")
+                self.tracker.add_change(
+                    "Bus Data",
+                    f"Bus {bus_id}",
+                    label,
+                    old,
+                    value
+                )
 
-                        )
+                print(f"\n✓ {label} Updated Successfully.")
+                return
 
-                        if value <= 0:
+            except ValueError:
+                print("Enter a valid number.")
 
-                            print("Voltage must be greater than zero.")
+    def edit_voltage(self, bus_id):
+        self._edit_float(bus_id, "voltage", "Voltage", allow_zero=False)
 
-                            continue
+    def edit_pgen(self, bus_id):
+        self._edit_float(bus_id, "pgen", "PGen")
 
-                        old = bus.voltage
+    def edit_qgen(self, bus_id):
+        self._edit_float(bus_id, "qgen", "QGen")
 
-                        bus.voltage = value
+    def edit_name(self, bus_id):
+        bus = self._find_bus(bus_id)
 
-                        self.tracker.add_change(
+        print(f"\nCurrent Bus Name : {bus.bus_name}")
 
-                            section="Bus Data",
+        while True:
+            value = input("Enter New Bus Name : ").strip()
 
-                            record=f"Bus {bus_id}",
+            if not value:
+                print("Bus name cannot be empty.")
+                continue
 
-                            field="Voltage",
+            old = bus.bus_name
+            bus.bus_name = value
 
-                            old_value=old,
+            self.tracker.add_change(
+                "Bus Data",
+                f"Bus {bus_id}",
+                "Bus Name",
+                old,
+                value
+            )
 
-                            new_value=value
-
-                        )
-
-                        print()
-
-                        print("✓ Voltage Updated Successfully.")
-
-                        return
-
-                    except ValueError:
-
-                        print("Enter a valid number.")
+            print("\n✓ Bus Name Updated Successfully.")
+            return
