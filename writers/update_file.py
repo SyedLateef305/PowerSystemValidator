@@ -39,6 +39,11 @@ class UpdateFile:
                 if text and not text.startswith("%"):
                     data_lines.append(i)
 
+        # Expected order:
+        # 0 -> first common spec line
+        # 1 -> second common spec line
+        # 2 -> island count
+        # 3 -> zones/print/plot/baseMVA/frequency
         if len(data_lines) < 4:
             return
 
@@ -130,8 +135,6 @@ class UpdateFile:
 
             ln = self.lines[line_index]
 
-            # Match the actual TransmissionLine model:
-            # status, circuits, from_bus, to_bus, resistance, reactance, charging
             self.reader.lines[i] = (
                 f"{ln.status} {ln.circuits} {ln.from_bus} {ln.to_bus} "
                 f"{ln.resistance:.6f} {ln.reactance:.6f} {ln.charging:.6f}"
@@ -185,7 +188,9 @@ class UpdateFile:
                 continue
 
             if in_section:
-                if text.startswith("%Source Details") or text.startswith("%Sink Details"):
+                if text.startswith("%1 0-Area Wise/1-Bus Wise/2-Zone Wise") \
+                   or text.startswith("%Source Details") \
+                   or text.startswith("%Sink Details"):
                     break
 
                 if text and not text.startswith("%") and not written:
@@ -196,37 +201,102 @@ class UpdateFile:
                     break
 
     # ----------------------------------------------------------
+    # INTERNAL HELPERS FOR SOURCE / SINK BLOCKS
+    # ----------------------------------------------------------
+    def _find_section_start(self, header):
+        for i, line in enumerate(self.reader.lines):
+            if line.strip().startswith(header):
+                return i
+        return -1
+
+    def _collect_data_line_indexes(self, start_idx, stop_headers):
+        """
+        Collect non-comment, non-blank line indexes after a section header
+        until one of the stop headers is reached.
+        """
+        indexes = []
+        i = start_idx + 1
+
+        while i < len(self.reader.lines):
+            text = self.reader.lines[i].strip()
+
+            if any(text.startswith(h) for h in stop_headers):
+                break
+
+            if text and not text.startswith("%"):
+                indexes.append(i)
+
+            i += 1
+
+        return indexes
+
+    def _write_source_or_sink_blocks(self, records, line_indexes):
+        """
+        Writes records into an existing multi-line Source/Sink block area.
+
+        Each record is written as:
+            header line
+            count line
+            count bus-increment lines
+
+        Existing file must already have enough data lines allocated.
+        """
+        ptr = 0
+
+        for rec in records:
+            if ptr >= len(line_indexes):
+                break
+
+            # Header line
+            self.reader.lines[line_indexes[ptr]] = (
+                f"{rec.area} {rec.option} {rec.load_percent} "
+                f"{rec.location} {rec.load_type}"
+            )
+            ptr += 1
+
+            # Count line
+            if ptr >= len(line_indexes):
+                break
+
+            bus_count = rec.bus_count if hasattr(rec, "bus_count") else 0
+            self.reader.lines[line_indexes[ptr]] = f"{bus_count}"
+            ptr += 1
+
+            # Bus increment rows
+            bus_rows = getattr(rec, "bus_increments", [])
+            for row_index in range(bus_count):
+                if ptr >= len(line_indexes):
+                    break
+
+                if row_index < len(bus_rows):
+                    row = bus_rows[row_index]
+                    self.reader.lines[line_indexes[ptr]] = (
+                        f"{row.bus_number} {row.increment:.6f}"
+                    )
+                else:
+                    # keep structure valid even if bus_count > actual rows
+                    self.reader.lines[line_indexes[ptr]] = "0 0.000000"
+
+                ptr += 1
+
+    # ----------------------------------------------------------
     # SOURCE DETAILS
     # ----------------------------------------------------------
     def update_source_details(self):
         if not self.sources:
             return
 
-        in_section = False
-        index = 0
+        start = self._find_section_start("%Source Details")
+        if start == -1:
+            return
 
-        for i, line in enumerate(self.reader.lines):
-            text = line.strip()
+        # Source section ends when Sink Details begins, or EOF
+        line_indexes = self._collect_data_line_indexes(
+            start,
+            stop_headers=["%Sink Details"]
+        )
 
-            if text.startswith("%Source Details"):
-                in_section = True
-                continue
-
-            if in_section and text.startswith("%Sink Details"):
-                break
-
-            if not in_section or not text or text.startswith("%"):
-                continue
-
-            if index >= len(self.sources):
-                break
-
-            src = self.sources[index]
-            self.reader.lines[i] = (
-                f"{src.area} {src.option} {src.load_percent} "
-                f"{src.location} {src.load_type}"
-            )
-            index += 1
+        self._write_source_or_sink_blocks(self.sources, line_indexes)
 
     # ----------------------------------------------------------
     # SINK DETAILS
@@ -235,28 +305,17 @@ class UpdateFile:
         if not self.sinks:
             return
 
-        in_section = False
-        index = 0
+        start = self._find_section_start("%Sink Details")
+        if start == -1:
+            return
 
-        for i, line in enumerate(self.reader.lines):
-            text = line.strip()
+        # Sink section goes until EOF
+        line_indexes = self._collect_data_line_indexes(
+            start,
+            stop_headers=[]
+        )
 
-            if text.startswith("%Sink Details"):
-                in_section = True
-                continue
-
-            if not in_section or not text or text.startswith("%"):
-                continue
-
-            if index >= len(self.sinks):
-                break
-
-            sink = self.sinks[index]
-            self.reader.lines[i] = (
-                f"{sink.area} {sink.option} {sink.load_percent} "
-                f"{sink.location} {sink.load_type}"
-            )
-            index += 1
+        self._write_source_or_sink_blocks(self.sinks, line_indexes)
 
     # ----------------------------------------------------------
     # MASTER UPDATE
